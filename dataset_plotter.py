@@ -194,14 +194,14 @@ def visualize_flat(image, keypoints = None, skeleton = skeleton_panoptic, show_c
         plt.plot([x[i], x[j]], [y[i], y[j]], c='c')
     plt.show()
 
-def plot_keypoints(keypoints, skeleton = skeleton_panoptic, show_skeleton = True, cva = None, title = "Proyección frontal"):
+def plot_keypoints(keypoints, skeleton = skeleton_panoptic, show_skeleton = True, cva = None, title = "Proyección frontal", y= 1):
     
     try:
         x = keypoints[:, 0]
-        y = keypoints[:, 1]
+        y = keypoints[:, y]
     except:
         x = [kp[0] for kp in keypoints]
-        y = [kp[1] for kp in keypoints]
+        y = [kp[y] for kp in keypoints]
 
     plt.gca().set_aspect('equal')
 

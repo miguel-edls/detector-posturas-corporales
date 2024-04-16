@@ -3,6 +3,9 @@ import numpy as np
 import math as m
 import mediapipe as mp
 from mmpose.apis import MMPoseInferencer
+from mmcv.image import imread
+import matplotlib.pyplot as plt
+from PIL import Image
 
 #Método para calcular el ángulo entre un vector definido por dos puntos y el eje vertical
 def angle_with_vertical(p1, p2):
@@ -29,6 +32,58 @@ def angle_with_vertical(p1, p2):
     angulo_grados = np.degrees(angulo_rad)
 
     return angulo_grados
+
+#Método para mostrar una imagen con las predicciones de mediapipe
+def show_mediapipe(item):
+    skeleton = (
+    (0, 2), (2, 7), (0, 5), (5, 8),(9, 10), #Nose, eyes, ears and mouth
+    (11, 12), (11, 23), (23, 24), (12, 24), #Thorax
+    (23, 25), (25, 27), (27, 29), (29, 31), #Left leg
+    (24, 26), (26, 28), (28, 30), (30, 32), #Right leg
+    (11, 13), (13, 15), (15, 17), (15, 19), (15, 21), #Left arm
+    (12, 14), (14, 16), (16, 18), (16, 20), (16, 22) #Right arm
+    )
+
+    plt.figure(figsize=(11, 11))
+    
+    img = np.flipud(Image.open(item['img']))
+    
+    
+    plt.imshow(img, origin="lower")
+    
+    keypoints = np.array(item['blaze_kpts'])
+    x = keypoints[:, 0]
+    y = keypoints[:, 1]
+    plt.scatter(x, y, marker=".")
+    for i, j in list(skeleton):
+        plt.plot([x[i], x[j]], [y[i], y[j]], c='c')
+    plt.show()
+    
+
+#Método para mostrar una imagen con las predicciones de mmpose
+def show_mmpose(item, mx=1, my=1):
+    skeleton = (
+        (6, 5), (5, 4), (4, 0), #Right leg
+        (3, 2), (2, 1), (1, 0), #Left leg
+        (0, 7), (7, 8), (8, 9), (9, 10), #Spine and head
+        (8, 11), (11, 12), (12, 13) , #Right arm
+        (8, 14), (14, 15), (15, 16) #Left arm
+    )
+
+    plt.figure(figsize=(11, 11))
+    
+    img = np.flipud(Image.open(item['img']))
+    
+    
+    plt.imshow(img, origin="lower")
+    
+    keypoints = np.array(item['mmpose_kpts'])
+    x = [(1-p)*1000*mx+560 for p in keypoints[:, 0]]
+    y = [p*1000*my for p in keypoints[:, 2]]
+    plt.scatter(x, y, marker=".")
+    for i, j in list(skeleton):
+        plt.plot([x[i], x[j]], [y[i], y[j]], c='c')
+    plt.show()
 
 #Método para calcular el punto medio entre dos puntos
 def get_midpoint(p1, p2):
@@ -68,38 +123,37 @@ def get_angle_mmpose(result):
 
     return angle
 
+def get_mediapipe_keypoints(items):
 
-#Cargamos el modelo de mediapipe y las opciones
-model_path = 'models/pose_landmarker_heavy.task'
-BaseOptions = mp.tasks.BaseOptions
-PoseLandmarker = mp.tasks.vision.PoseLandmarker
-PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
-VisionRunningMode = mp.tasks.vision.RunningMode
 
-options = PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path=model_path),
-    running_mode=VisionRunningMode.IMAGE
-)
-
-#Abrimos el modelo de mediapipe y ejecutamos las predicciones
-with PoseLandmarker.create_from_options(options) as landmarker:
-
-    image_recto = mp.Image.create_from_file('samples/foto_recto.jpg')
-    image_medio = mp.Image.create_from_file('samples/foto_medio.jpg')
-    image_encorvado = mp.Image.create_from_file('samples/foto_encorvado.jpg')
-
-    
+    #iniciamos el temporizador
     start_time = time.time()
 
-    results1 = landmarker.detect(image_recto)
-    print("Angulo 1:")
-    print(get_angle_mp(results1.pose_world_landmarks[0]))
-    results2 = landmarker.detect(image_medio)
-    print("Angulo 2:")
-    print(get_angle_mp(results2.pose_world_landmarks[0]))
-    results3 = landmarker.detect(image_encorvado)
-    print("Angulo 3:")
-    print(get_angle_mp(results3.pose_world_landmarks[0]))
+    #Cargamos el modelo de mediapipe y las opciones
+    model_path = 'models/pose_landmarker_heavy.task'
+    BaseOptions = mp.tasks.BaseOptions
+    PoseLandmarker = mp.tasks.vision.PoseLandmarker
+    PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+    VisionRunningMode = mp.tasks.vision.RunningMode
+
+    options = PoseLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=model_path),
+        running_mode=VisionRunningMode.IMAGE
+    )
+
+    #Abrimos el modelo de mediapipe y ejecutamos las predicciones
+    with PoseLandmarker.create_from_options(options) as landmarker:
+
+        for item in items:
+
+            image = mp.Image.create_from_file(item['img'])
+        
+        
+        
+
+            results = landmarker.detect(image)
+            item['blaze_results'] = results
+        
 
     end_time = time.time()
     execution_time = end_time - start_time
@@ -107,23 +161,17 @@ with PoseLandmarker.create_from_options(options) as landmarker:
 
 
 #Cargamos el modelo de mmpose
-inferencer = MMPoseInferencer(pose3d = 'human3d')
+def get_mmpose_keypoints(items):
+    inferencer = MMPoseInferencer(pose3d="motionbert_dstformer-ft-243frm_8xb32-120e_h36m")
+    start_time = time.time()
 
-#Ejecutamos las predicciones con MMPose
-start_time = time.time()
-result_generator = inferencer('samples/foto_recto.jpg', show=False)
-result = next(result_generator)
-print("Angulo 1:")
-print(get_angle_mmpose(result))
-result_generator = inferencer('samples/foto_medio.jpg', show=False)
-result = next(result_generator)
-print("Angulo 2:")
-print(get_angle_mmpose(result))
-result_generator = inferencer('samples/foto_encorvado.jpg', show=False)
-result = next(result_generator)
-print("Angulo 3:")
-print(get_angle_mmpose(result))
+    #Ejecutamos las predicciones con MMPose
+    for item in items:
+        
+        result_generator = inferencer(item['img'], return_datasamples=True)
+        result = next(result_generator)
+        item['mmpose_results'] = result
 
-end_time = time.time()
-execution_time = end_time - start_time
-print("Execution time:", execution_time, "seconds")
+    end_time = time.time()
+    execution_time = end_time - start_time
+    print("Execution time:", execution_time, "seconds")
